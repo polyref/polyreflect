@@ -10,8 +10,8 @@ contract Deployer is Context, Ownable {
     uint256 internal immutable TOKENS_FOR_LIQUIDITY = 4_500_000_000 * 10**_tokenDecimals;
     uint256 internal immutable TEAM_TOKENS = 500_000_000 * 10**_tokenDecimals;
     uint256 internal immutable SOFT_CAP = 250_000 * 10**18; // 250k MATIC
-    uint256 internal immutable VALID_TILL = block.timestamp + 60 * 60 * 24 + 15*60; // 1 day after deploy + 15 minutes to verify contracts
-    uint256 internal immutable PRESALE_RATIO = 8000; // For 1 MATIC you'll receive 8 PRF
+    uint256 internal immutable VALID_TILL = block.timestamp + 60 * 60 * 24; // 1 day after deploy
+    uint256 internal immutable PRESALE_RATIO = 8000; // For 1 MATIC you'll receive __PRESALE_RATIO__ PRF
     address internal QUICKSWAP_ROUTER_ADDRESS = 0xa5E0829CaCEd8fFDD4De3c43696c57F7D7A678ff ;
     IQuickSwap internal quick_router;
     
