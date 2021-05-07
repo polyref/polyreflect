@@ -1,3 +1,8 @@
+pragma solidity ^0.6.2;
+
+import "./utils/Ownable.sol";
+import "./interfaces/IERC20.sol";
+
 contract PolyReflect is Context, IERC20, Ownable {
     using SafeMath for uint256;
     using Address for address;
