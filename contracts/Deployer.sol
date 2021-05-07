@@ -55,15 +55,7 @@ contract Deployer is Context, Ownable {
         } else { // Otherwise, add liquidity to router and burn LP
             require(reflectToken.approve(QUICKSWAP_ROUTER_ADDRESS, TOKENS_FOR_LIQUIDITY), 'Approve failed');
             require(reflectToken.transfer(owner(), TEAM_TOKENS), 'Team tokens transfer failed');
-            quick_router.addLiquidityETH{value: address(this).balance}(
-                address(reflectToken), //token
-                TOKENS_FOR_LIQUIDITY, // amountTokenDesired
-                TOKENS_FOR_LIQUIDITY, // amountTokenMin
-                address(this).balance, // amountETHMin
-                address(0), // to => liquidity tokens are locked forever by sending them to dead address
-                block.timestamp + 120 // deadline
-                );
-            
+
             for(uint256 i = 0; i < participants.length; i++) { // send tokens to participants
                 uint256 _payoutAmount = _getReward(participants[i]);
                 uint256 _tokensRemaining = reflectToken.balanceOf( address(this) );
@@ -80,6 +72,15 @@ contract Deployer is Context, Ownable {
                     }
                 }
             }
+            
+            quick_router.addLiquidityETH{value: address(this).balance}(
+                address(reflectToken), //token
+                TOKENS_FOR_LIQUIDITY, // amountTokenDesired
+                TOKENS_FOR_LIQUIDITY, // amountTokenMin
+                address(this).balance, // amountETHMin
+                address(0), // to => liquidity tokens are locked forever by sending them to dead address
+                block.timestamp + 120 // deadline
+            );
             
             reflectToken.transfer(payable(0x000000000000000000000000000000000000dEaD), reflectToken.balanceOf( address(this) )); // And burn remaining tokens
         }
