@@ -1,3 +1,8 @@
+pragma solidity ^0.6.2;
+
+import "./utils/Ownable.sol";
+import "./PFR.sol";
+
 contract Deployer is Context, Ownable {
     using SafeMath for uint256;
     using Address for address;
