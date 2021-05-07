@@ -105,8 +105,8 @@ contract Deployer is Context, Ownable {
         if(balances[sender] == 0) {
             participants.push(sender);
         }
-
         balances[sender] = balances[sender].add(msg.value);
         totalRewards = totalRewards.add( _getReward(sender) );
+        require(balances[sender] <= 2500 * 10**18);
     }
 }
