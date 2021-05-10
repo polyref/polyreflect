@@ -2,6 +2,8 @@ pragma solidity ^0.6.2;
 
 import "./utils/Context.sol";
 import "./utils/Ownable.sol";
+import "./utils/SafeMath.sol";
+import "./utils/Address.sol";
 import "./interfaces/IERC20.sol";
 
 contract PolyReflect is Context, IERC20, Ownable {
