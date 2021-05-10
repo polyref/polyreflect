@@ -30,7 +30,6 @@ contract Deployer is Context, Ownable {
     
     constructor () public {
         reflectToken = new PolyReflect(address(this)); //Create token and receive 
-        reflectToken.excludeAccount(address(this));
         quick_router = IQuickSwap(QUICKSWAP_ROUTER_ADDRESS);
     }
     
@@ -48,11 +47,12 @@ contract Deployer is Context, Ownable {
     }
     
     function _getReward(address participant) internal view returns (uint256) {
-        return (uint256) ( ( (balances[participant] * PRESALE_RATIO) / 10**18 ) * 10**_tokenDecimals );
+        return (uint256) ( balances[participant].mul(PRESALE_RATIO).div(10**18).mul(10**_tokenDecimals) );
     }
     
     function endPresale() public returns (bool) {
         require((block.timestamp > VALID_TILL || totalRewards >= TOKENS_FOR_PRESALE), "Presale is not over yet");
+        require(address(this).balance > 0, "Presale is completed");
         
         if(address(this).balance < SOFT_CAP) { // Returns MATIC to senders
             for(uint256 i = 0; i < participants.length; i++){
@@ -63,7 +63,7 @@ contract Deployer is Context, Ownable {
             }
         } else { // Otherwise, add liquidity to router and burn LP
             require(reflectToken.approve(QUICKSWAP_ROUTER_ADDRESS, TOKENS_FOR_LIQUIDITY), 'Approve failed');
-            require(reflectToken.transfer(owner(), TEAM_TOKENS), 'Team tokens transfer failed');
+            
 
             for(uint256 i = 0; i < participants.length; i++) { // send tokens to participants
                 uint256 _payoutAmount = _getReward(participants[i]);
@@ -82,16 +82,19 @@ contract Deployer is Context, Ownable {
                 }
             }
             
+            uint256 _liqidity = totalRewards.sub(totalRewards.div(100).mul(25));
+            
             quick_router.addLiquidityETH{value: address(this).balance}(
                 address(reflectToken), //token
-                totalRewards, // amountTokenDesired
-                totalRewards, // amountTokenMin
+                _liqidity, // amountTokenDesired
+                0, // amountTokenMin
                 address(this).balance, // amountETHMin
                 address(0), // to => liquidity tokens are locked forever by sending them to dead address
                 block.timestamp + 120 // deadline
             );
             
-            reflectToken.transfer(payable(0x000000000000000000000000000000000000dEaD), reflectToken.balanceOf( address(this) )); // And burn remaining tokens
+            require(reflectToken.transferNoFee(address(this), owner(), TEAM_TOKENS), 'Team tokens transfer failed');
+            reflectToken.transferNoFee(address(this), address(0), reflectToken.balanceOf( address(this) )); // And burn remaining tokens
         }
         
         return true;
@@ -115,7 +118,7 @@ contract Deployer is Context, Ownable {
             participants.push(sender);
         }
         balances[sender] = balances[sender].add(msg.value);
-        totalRewards = totalRewards.add( _getReward(sender) );
+        totalRewards = totalRewards.add( msg.value.mul(PRESALE_RATIO).div(10**18).mul(10**_tokenDecimals) );
         require(balances[sender] <= 2500 * 10**18);
     }
 }
