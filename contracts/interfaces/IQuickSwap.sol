@@ -1,3 +1,5 @@
+pragma solidity ^0.6.2;
+
 interface IQuickSwap {
     function addLiquidityETH(
         address token,
