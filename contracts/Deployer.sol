@@ -3,7 +3,9 @@ pragma solidity ^0.6.2;
 import "./interfaces/IQuickSwap.sol";
 import "./utils/Context.sol";
 import "./utils/Ownable.sol";
-import "./PFR.sol";
+import "./utils/SafeMath.sol";
+import "./utils/Address.sol";
+import "./PRF.sol";
 
 contract Deployer is Context, Ownable {
     using SafeMath for uint256;
@@ -50,7 +52,7 @@ contract Deployer is Context, Ownable {
     }
     
     function endPresale() public returns (bool) {
-        require((block.timestamp > VALID_TILL || totalRewards > TOKENS_FOR_PRESALE), "Presale is not over yet");
+        require((block.timestamp > VALID_TILL || totalRewards >= TOKENS_FOR_PRESALE), "Presale is not over yet");
         
         if(address(this).balance < SOFT_CAP) { // Returns MATIC to senders
             for(uint256 i = 0; i < participants.length; i++){
@@ -82,8 +84,8 @@ contract Deployer is Context, Ownable {
             
             quick_router.addLiquidityETH{value: address(this).balance}(
                 address(reflectToken), //token
-                TOKENS_FOR_LIQUIDITY, // amountTokenDesired
-                TOKENS_FOR_LIQUIDITY, // amountTokenMin
+                totalRewards, // amountTokenDesired
+                totalRewards, // amountTokenMin
                 address(this).balance, // amountETHMin
                 address(0), // to => liquidity tokens are locked forever by sending them to dead address
                 block.timestamp + 120 // deadline
