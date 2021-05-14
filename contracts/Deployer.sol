@@ -14,12 +14,12 @@ contract Deployer is Context, Ownable {
     PolyReflect public reflectToken;
     uint256 internal _tokenDecimals = 9;
     uint256 internal totalRewards = 0;
-    uint256 internal START_TIME = block.timestamp + 60 * 60 * 24;
+    uint256 internal START_TIME = 0;
     uint256 internal VALID_TILL = START_TIME + 60 * 60 * 24; // 1 day after start
     uint256 internal immutable TOKENS_FOR_PRESALE = 5_000_000_000 * 10**_tokenDecimals;
     uint256 internal immutable TOKENS_FOR_LIQUIDITY = 4_500_000_000 * 10**_tokenDecimals;
     uint256 internal immutable TEAM_TOKENS = 500_000_000 * 10**_tokenDecimals;
-    uint256 internal immutable SOFT_CAP = 50 * 10**18; // 250k MATIC
+    uint256 internal immutable SOFT_CAP = 250 * 10**18; // 250k MATIC
     uint256 internal immutable PRESALE_RATIO = 8000; // For 1 MATIC you'll receive __PRESALE_RATIO__ PRF
     address internal QUICKSWAP_ROUTER_ADDRESS = 0xa5E0829CaCEd8fFDD4De3c43696c57F7D7A678ff ;
     IQuickSwap internal quick_router;
