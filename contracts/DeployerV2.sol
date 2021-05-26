@@ -147,8 +147,16 @@ contract DeployerV2 is Context, Ownable {
         return amountMatic;
     }
     
+    function _getTokenAmountFromShare(address participant, uint256 tokenAmountTotal) internal returns (uint256 _tokenAmount) {
+        uint256 balance = balances[participant];
+        uint256 balanceShare = balance.div( address(this).balance.div(100) );
+        uint256 tokenAmount = tokenAmountTotal.mul(balanceShare);
+        
+        return tokenAmount;
+    }
+    
     function endPresale() public returns (bool) {
-        require((block.timestamp > VALID_TILL || totalRewards >= PRESALE_TOKENS), "Presale is not over yet");
+        require((block.timestamp > VALID_TILL || totalMatic >= HARD_CAP), "Presale is not over yet");
         require(address(this).balance > 0, "Presale is completed");
         
         if(totalMatic < SOFT_CAP) {
@@ -163,7 +171,6 @@ contract DeployerV2 is Context, Ownable {
                 }
             }
         } else { // Otherwise, add liquidity to router and burn LP
-
             address[] memory path;
             path[0] = quick_router.WETH();
             path[1] = address(reflectToken);
@@ -176,26 +183,13 @@ contract DeployerV2 is Context, Ownable {
             );
             
             for(uint256 i = 0; i < participants.length; i++) { // send tokens to participants
-                if(participants[i] == address(0)){ //skip purged elements of queue
+                address participant = participants[i];
+                if(participant == address(0)){ //skip purged elements of queue
                     continue;
                 }
-                // uint256 _payoutAmount = rewards[ participants[i] ] ;
-                // uint256 _tokensRemaining = reflectToken.balanceOf( address(this) );
-                // if( _tokensRemaining > 0 && _payoutAmount > 0 && _payoutAmount <= _tokensRemaining) {
-                //     if(reflectToken.transfer(
-                //         participants[i], 
-                //         _payoutAmount
-                //         )){ balances[participants[i]] = 0; }
-                        
-                // } else  {
-                //     if (_payoutAmount > 0) {
-                //         payable(participants[i]).transfer( balances[ participants[i] ] );
-                //         balances[participants[i]] = 0;
-                //     }
-                // }
+                reflectToken.transferFrom( address(this), participant, _getTokenAmountFromShare(participant, amounts[0]) );
             }
-            
-            
+
             require(reflectToken.transferNoFee(address(this), owner(), TEAM_TOKENS), 'Team tokens transfer failed');
             require(reflectToken.unlockAfterPresale(), 'Token is not unlocked');
             reflectToken.transferNoFee(address(this), address(0), reflectToken.balanceOf( address(this) )); // And burn remaining tokens
