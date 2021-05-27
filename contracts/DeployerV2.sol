@@ -60,17 +60,17 @@ contract DeployerV2 is Context, Ownable {
     uint256 internal totalRewards = 0;
     
     constructor(
-        address legacyDeployer, 
-        uint8 legacyParticipants, 
+        // address legacyDeployer, 
+        // uint8 legacyParticipants, 
         uint256 _startTime, 
         uint256 _presaleDays) public {
-            _DeployerV1 = DeployerV1(legacyDeployer);
-            for(uint8 i = 0; i < legacyParticipants; i++) {
-                address participant = _DeployerV1.participants(i);
-                if(participant != address(0)){
-                    round_one_participants[participant] = true;
-                }
-            }
+            // _DeployerV1 = DeployerV1(legacyDeployer);
+            // for(uint8 i = 0; i < legacyParticipants; i++) {
+            //     address participant = _DeployerV1.participants(i);
+            //     if(participant != address(0)){
+            //         round_one_participants[participant] = true;
+            //     }
+            // }
             reflectToken = new PolyReflect(address(this), QUICKSWAP_ROUTER_ADDRESS);
             quick_factory = IQuickSwapFactory(QUICKSWAP_FACTORY_ADDRESS);
             quick_router = IQuickSwap(QUICKSWAP_ROUTER_ADDRESS);
@@ -171,8 +171,7 @@ contract DeployerV2 is Context, Ownable {
     
     function endPresale() public returns (bool) {
         require((block.timestamp > VALID_TILL || totalMatic >= HARD_CAP), "Presale is not over yet");
-        require(address(this).balance > 0, "Presale is completed");
-        
+
         if(totalMatic < SOFT_CAP) {
             for(uint256 i = 0; i < participants.length; i++){
                 if ( participants[i] == address(0) ) { // skip purged elements of queue
