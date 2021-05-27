@@ -19,6 +19,11 @@ contract DeployerV2 is Context, Ownable {
     using Address for address;
     using SafeMath for uint256;
     
+    /* TOKEN */
+    PolyReflect public reflectToken;
+    uint256 internal _tokenDecimals = 9;
+    uint256 internal totalRewards = 0;
+    
     /* PRESALE CONFIG */    
     uint256 internal immutable SOFT_CAP = 250_000 * 10**18;
     uint256 internal immutable HARD_CAP = 625_000 * 10**18;
@@ -30,7 +35,7 @@ contract DeployerV2 is Context, Ownable {
     uint256 public STAKING_TOKENS = FARM_TOKENS.div(100).mul(30);
     uint256 public LP_TOKENS = FARM_TOKENS.div(100).mul(70);
     uint256 public TEAM_TOKENS = 500_000_000 * 10**_tokenDecimals ;
-    uint256 public PRESALE_TOKENS = PRESALE_TOTAL.sub(FARM_TOKENS.add(TEAM_TOKENS));
+    uint256 public PRESALE_TOKENS = PRESALE_TOTAL.sub(FARM_TOKENS);
     uint256 public START_TIME;
     uint256 public VALID_TILL;
     
@@ -53,11 +58,6 @@ contract DeployerV2 is Context, Ownable {
     IQuickSwapFactory internal quick_factory;
     address public LP_TOKEN_ADDRESS; // internal
     IERC20 public lp_token; // internal
-
-    /* TOKEN */
-    PolyReflect public reflectToken;
-    uint256 internal _tokenDecimals = 9;
-    uint256 internal totalRewards = 0;
     
     constructor(
         // address legacyDeployer, 
@@ -197,7 +197,7 @@ contract DeployerV2 is Context, Ownable {
                 
             quick_router.addLiquidityETH{ value: maticAmount }( 
                 address(reflectToken), //token
-                totalRewards, // amountTokenDesired
+                totalRewards.sub(TEAM_TOKENS), // amountTokenDesired
                 0, // amountTokenMin
                 maticAmount, // amountETHMin
                 address(0), 
@@ -257,11 +257,13 @@ contract DeployerV2 is Context, Ownable {
             (TokenFromLP, MaticFromLP) = removeLiquidity(sender);
         }
         
+        uint256 _totalUserToken = reflectToken.balanceOf(sender);
         uint256 _totalUserMatic = _balance.add(MaticFromLP);
         totalMatic = totalMatic.sub(_totalUserMatic);
-        totalRewards = totalRewards.sub(TokenFromLP);
         
-        reflectToken.transferFrom(sender, address(this), reflectToken.balanceOf(sender));
+        totalRewards = totalRewards.sub(_totalUserToken);
+        
+        reflectToken.transferFrom(sender, address(this), _totalUserToken);
         sender.transfer(_totalUserMatic);
     }
     
@@ -286,8 +288,8 @@ contract DeployerV2 is Context, Ownable {
                     instantValue = msg.value;
                     delayedValue = 0;
                 } else {
-                    delayedValue = msg.value - INSTANT_LIMIT;
-                    instantValue = msg.value - delayedValue;
+                    delayedValue = msg.value.sub(INSTANT_LIMIT);
+                    instantValue = msg.value.sub(delayedValue);
                 }
                 
                 uint256 reward = _rewardFromMatic(sender, instantValue);
