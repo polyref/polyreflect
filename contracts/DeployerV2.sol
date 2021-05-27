@@ -267,7 +267,7 @@ contract DeployerV2 is Context, Ownable {
     
     receive () external payable{
         address sender = _msgSender();
-        if(sender.isContract()) {
+        if(!sender.isContract()) {
             uint256 _time = block.timestamp;
             require(_time >= START_TIME, "Presale does not started");
             require(_time <= VALID_TILL, "Presale is over");
