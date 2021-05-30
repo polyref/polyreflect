@@ -9,6 +9,7 @@ import "./utils/Ownable.sol";
 import "./utils/SafeMath.sol";
 import "./utils/Address.sol";
 import "./PRF.sol";
+import "./staking/Staking.sol";
 
 interface DeployerV1 {
     function participants(uint256) external returns(address);
@@ -24,18 +25,27 @@ contract DeployerV2 is Context, Ownable {
     uint256 internal _tokenDecimals = 9;
     uint256 internal totalRewards = 0;
     
-    /* PRESALE CONFIG */    
-    uint256 internal immutable SOFT_CAP = 250_000 * 10**18;
-    uint256 internal immutable HARD_CAP = 625_000 * 10**18;
-    uint256 private PRESALE_RATIO = 8000;
-    uint256 private PRESALE_TOTAL = 10 * 10**9 * 10**_tokenDecimals;
-    uint256 private INSTANT_LIMIT = 3000 * 10**18;
+    /* STAKING */
+    Staking public LPStaking;
+    Staking public NativeStaking;
+    uint256 public REWARD_PER_BLOCK;
     
-    uint256 public FARM_TOKENS = PRESALE_TOTAL.div(100).mul(80);
-    uint256 public STAKING_TOKENS = FARM_TOKENS.div(100).mul(30);
-    uint256 public LP_TOKENS = FARM_TOKENS.div(100).mul(70);
-    uint256 public TEAM_TOKENS = 500_000_000 * 10**_tokenDecimals ;
-    uint256 public PRESALE_TOKENS = PRESALE_TOTAL.sub(FARM_TOKENS);
+    /* PRESALE CONFIG */    
+    uint256 internal constant SOFT_CAP = 1; //250_000 * 10**18;
+    uint256 internal constant HARD_CAP = 5 * 10**18;//625_000 * 10**18;
+    
+    uint256 private TOTAL_TOKENS = (10 * 10**9 * 10**_tokenDecimals);
+    
+    
+    uint256 public FARM_TOKENS = TOTAL_TOKENS.div(100).mul(75);
+        uint256 public NATIVE_STAKING_TOKENS = FARM_TOKENS.div(100).mul(30);
+        uint256 public LP_STAKING_TOKENS = FARM_TOKENS.div(100).mul(70);
+    uint256 public TEAM_TOKENS = TOTAL_TOKENS.div(100).mul(5);
+    uint256 public PRESALE_TOKENS = TOTAL_TOKENS.sub(FARM_TOKENS).sub(TEAM_TOKENS);
+        uint256 public TOKENS_TO_LIQIDITY = PRESALE_TOKENS.div(2);
+        uint256 public PRESALE_RATIO = ((PRESALE_TOKENS.sub(TOKENS_TO_LIQIDITY)).div(10**_tokenDecimals)).div(HARD_CAP.div(10**18));
+        uint256 private INSTANT_LIMIT = 3000 * 10**18;
+    
     uint256 public START_TIME;
     uint256 public VALID_TILL;
     
@@ -54,16 +64,17 @@ contract DeployerV2 is Context, Ownable {
     /* QUICKSWAP */
     address internal QUICKSWAP_FACTORY_ADDRESS = 0x5757371414417b8C6CAad45bAeF941aBc7d3Ab32 ;
     address internal QUICKSWAP_ROUTER_ADDRESS = 0xa5E0829CaCEd8fFDD4De3c43696c57F7D7A678ff ;
-    IQuickSwap internal quick_router;
     IQuickSwapFactory internal quick_factory;
+    IQuickSwap internal quick_router;
+    
     address public LP_TOKEN_ADDRESS; // internal
-    IERC20 public lp_token; // internal
+    IERC20 public lpToken; // internal
     
     constructor(
         // address legacyDeployer, 
         // uint8 legacyParticipants, 
         uint256 _startTime, 
-        uint256 _presaleDays) public {
+        uint256 _presaleDays) public payable {
             // _DeployerV1 = DeployerV1(legacyDeployer);
             // for(uint8 i = 0; i < legacyParticipants; i++) {
             //     address participant = _DeployerV1.participants(i);
@@ -74,16 +85,29 @@ contract DeployerV2 is Context, Ownable {
             reflectToken = new PolyReflect(address(this), QUICKSWAP_ROUTER_ADDRESS);
             quick_factory = IQuickSwapFactory(QUICKSWAP_FACTORY_ADDRESS);
             quick_router = IQuickSwap(QUICKSWAP_ROUTER_ADDRESS);
-            
-            /* INIT STAKINGS */
-            
-            /* */
-            
+
             START_TIME = _startTime;
             VALID_TILL = _startTime + (_presaleDays * 1 days);
             reflectToken.approve(address(this), ~uint256(0));
             require(reflectToken.approve(QUICKSWAP_ROUTER_ADDRESS, ~uint256(0)), "Approve failed");
-            IERC20(quick_router.WETH()).approve(QUICKSWAP_ROUTER_ADDRESS, ~uint256(0));
+            REWARD_PER_BLOCK = FARM_TOKENS / (60 * 60 * 24 * 365 / 2);
+            
+            /* CREATING GENESIS LIQIDITY */ 
+            uint256 tokenAmount = _rewardFromMatic(_msgSender(), msg.value);
+            quick_router.addLiquidityETH{ value: msg.value }( 
+                address(reflectToken), //token
+                tokenAmount, // amountTokenDesired
+                0, // amountTokenMin
+                msg.value, // amountETHMin
+                address(this),//address(0), 
+                block.timestamp + 120 // deadline
+            );
+            totalRewards = totalRewards.add( tokenAmount );
+            totalMatic = totalMatic.add( msg.value );
+            LP_TOKEN_ADDRESS = quick_factory.getPair( quick_router.WETH(), address(reflectToken) );
+            lpToken = IERC20( LP_TOKEN_ADDRESS );
+            require( lpToken.approve( QUICKSWAP_ROUTER_ADDRESS, ~uint256(0)) );
+            reflectToken.setLPPair( LP_TOKEN_ADDRESS );
     }   
 
     function _startTime() public view returns (uint256) {
@@ -110,7 +134,7 @@ contract DeployerV2 is Context, Ownable {
         VALID_TILL = timestamp;
     }
     
-    function _rewardFromMatic(address user, uint256 _value) internal view returns (uint256 reward) {
+    function _rewardFromMatic(address user, uint256 _value) public view returns (uint256 reward) {
         if(round_one_participants[user] == true) { 
             return _value.mul(PRESALE_RATIO.add(PRESALE_RATIO.div(100).mul(BENEFITS_PERCENT))).div(10**18).mul(10**_tokenDecimals);
         }else{
@@ -118,32 +142,26 @@ contract DeployerV2 is Context, Ownable {
         }
     }
     
-    function _maticFromReward(address user, uint256 _value) internal view returns (uint256 ETH) {
+    function _maticFromReward(address user, uint256 _value) public view returns (uint256 _wei) {
         if(round_one_participants[user] == true) { 
-            return _value.div(PRESALE_RATIO.add(PRESALE_RATIO.div(100).mul(BENEFITS_PERCENT))).div(10**18).mul(10**_tokenDecimals);
+            return _value.div(PRESALE_RATIO.add(PRESALE_RATIO.div(100).mul(BENEFITS_PERCENT))).mul(10**18).div(10**_tokenDecimals);
         }else{
-            return _value.div(PRESALE_RATIO).div(10**18).mul(10**_tokenDecimals); 
+            return _value.div(PRESALE_RATIO).mul(10**18).div(10**_tokenDecimals); 
         }
     }
 
     function addLiquidity(address sender, uint256 tokenAmount, uint256 maticAmount) internal {
         (,,uint liqidity) = quick_router.addLiquidityETH{ value: maticAmount }( 
                 address(reflectToken), //token
-                tokenAmount.div(2), // amountTokenDesired
+                tokenAmount, // amountTokenDesired
                 0, // amountTokenMin
                 maticAmount, // amountETHMin
                 address(this), 
                 block.timestamp + 120 // deadline
             );
-        
-        if( LP_TOKEN_ADDRESS == address(0) ) {
-            LP_TOKEN_ADDRESS = quick_factory.getPair( quick_router.WETH(), address(reflectToken) );
-            lp_token = IERC20( LP_TOKEN_ADDRESS );
-            require( lp_token.approve( QUICKSWAP_ROUTER_ADDRESS, ~uint256(0)) );
-            reflectToken.setLPPair( LP_TOKEN_ADDRESS );
-        }    
-        
+
         liquidityShare[sender] = liquidityShare[sender].add(liqidity);
+        totalRewards = totalRewards.add( tokenAmount );
         reflectToken.transferFrom( address(this), sender, tokenAmount );
         reflectToken.increaseAllowanceFrom(sender, address(this), tokenAmount);
     }
@@ -162,11 +180,17 @@ contract DeployerV2 is Context, Ownable {
     }
     
     function _getTokenAmountFromShare(address participant, uint256 tokenAmountTotal) internal view returns (uint256 _tokenAmount) {
+        
         uint256 balance = balances[participant];
+        if(balance > 0){ 
         uint256 balanceShare = (balance.div( address(this).balance.div(100) )).div(100);
         uint256 tokenAmount = tokenAmountTotal.mul(balanceShare);
         
         return tokenAmount;
+        } else {
+            return 0;
+        }
+        
     }
     
     function endPresale() public returns (bool) {
@@ -186,30 +210,28 @@ contract DeployerV2 is Context, Ownable {
                 }
             }
         } else { // Otherwise, add liquidity to router and burn LP
-            (,uint256 maticAmount) = quick_router.removeLiquidityETH(
-                    address(reflectToken),
-                    lp_token.balanceOf(address(this)),
-                    0,
-                    0,
-                    address(this),
-                    block.timestamp + 120
-                );
+            // (,uint256 maticAmount) = quick_router.removeLiquidityETH(
+            //         address(reflectToken),
+            //         lpToken.balanceOf(address(this)),
+            //         0,
+            //         0,
+            //         address(this),
+            //         block.timestamp + 120
+            //     );
                 
-            quick_router.addLiquidityETH{ value: maticAmount }( 
-                address(reflectToken), //token
-                totalRewards.sub(TEAM_TOKENS), // amountTokenDesired
-                0, // amountTokenMin
-                maticAmount, // amountETHMin
-                address(0), 
-                block.timestamp + 120 // deadline
-            );
+            // quick_router.addLiquidityETH{ value: maticAmount }( 
+            //     address(reflectToken), //token
+            //     totalRewards, // amountTokenDesired
+            //     0, // amountTokenMin
+            //     maticAmount, // amountETHMin
+            //     address(0), 
+            //     block.timestamp + 120 // deadline
+            // );
                 
-            if (address(this).balance > 0) {
-                address[] memory path;
+            if(address(this).balance > 0) {
+                address[] memory path = new address[](2);
                 path[0] = quick_router.WETH();
                 path[1] = address(reflectToken);
-                
-                
                 
                 uint[] memory amounts = quick_router.swapExactETHForTokens{value: address(this).balance}(
                     0,
@@ -223,11 +245,41 @@ contract DeployerV2 is Context, Ownable {
                     if(participant == address(0)){ // skip purged elements of queue
                         continue;
                     }
-                    reflectToken.transferFrom( address(this), participant, _getTokenAmountFromShare(participant, amounts[0]) );
+                    uint256 _share = _getTokenAmountFromShare(participant, amounts[0]);
+                    
+                    if (_share > 0){
+                        reflectToken.transferFrom( address(this), participant, _share );    
+                    }
                 }
             }
-
-            require(reflectToken.transferNoFee(address(this), owner(), reflectToken.balanceOf( address(this) )), "Team tokens transfer failed");
+            
+            /* INIT STAKINGS */
+            uint256 _stakingStart = block.number+1;// + (60 * 60 * 4)/2; 
+            
+            LPStaking = new Staking(
+                reflectToken,
+                REWARD_PER_BLOCK,
+                _stakingStart
+                );
+            reflectToken.transferNoFee( address(this), address(LPStaking), LP_STAKING_TOKENS );
+            LPStaking.fund(LP_STAKING_TOKENS);
+            LPStaking.add( reflectToken.balanceOf(address(LPStaking)), lpToken, false);
+            
+            NativeStaking = new Staking(
+                reflectToken,
+                REWARD_PER_BLOCK,
+                _stakingStart
+                );
+            reflectToken.transferNoFee( address(this), address(NativeStaking), NATIVE_STAKING_TOKENS );
+            NativeStaking.fund(NATIVE_STAKING_TOKENS);
+            NativeStaking.add( reflectToken.balanceOf(address(NativeStaking)), reflectToken, false);
+            
+            
+            reflectToken.approve( address(NativeStaking), ~uint256(0) );                
+            reflectToken.approve( address(LPStaking), ~uint256(0) );                
+            /*                   */
+            
+            require(reflectToken.transferNoFee(address(this), owner(), TEAM_TOKENS), "Team tokens transfer failed");
             require(reflectToken.unlockAfterPresale(), "Token is not unlocked");
         }
         
@@ -238,11 +290,10 @@ contract DeployerV2 is Context, Ownable {
         require(block.timestamp < VALID_TILL, "Cannon withdraw after end of the pre-sale");
         address payable sender = payable(_msgSender());
         uint256 _balance = balances[sender];
-        uint256 TokenFromLP;
-        uint256 MaticFromLP;
+        uint256 _reward = rewards[sender];
         
         require(address(this).balance > 0 || liquidityShare[sender] > 0, "Nothing to withdraw");
-        require(_balance > 0 || liquidityShare[sender] > 0, "Cannot withdraw zero balance");
+        require(_balance > 0 || rewards[sender] > 0, "Cannot withdraw zero balance");
         
         balances[sender] = 0;
         rewards[sender] = 0;
@@ -254,20 +305,28 @@ contract DeployerV2 is Context, Ownable {
         }
         
         if( liquidityShare[sender] > 0 ){
-            (TokenFromLP, MaticFromLP) = removeLiquidity(sender);
+            removeLiquidity(sender);
         }
         
-        uint256 _totalUserToken = reflectToken.balanceOf(sender);
-        uint256 _totalUserMatic = _balance.add(MaticFromLP);
-        totalMatic = totalMatic.sub(_totalUserMatic);
+        uint256 _totalUserToken = _reward;
+        uint256 _matic = _maticFromReward(sender, _totalUserToken);
+        uint256 _totalUserMatic = _balance.add(_matic);
         
+        totalMatic = totalMatic.sub(_totalUserMatic);
         totalRewards = totalRewards.sub(_totalUserToken);
         
         reflectToken.transferFrom(sender, address(this), _totalUserToken);
         sender.transfer(_totalUserMatic);
     }
     
+    function withdrawDebug() public onlyOwner() { // remove on prod!
+        require(address(this).balance > 0 || lpToken.balanceOf(address(this)) > 0);
+        lpToken.transfer(_msgSender(), lpToken.balanceOf(address(this)));
+        payable(_msgSender()).transfer(address(this).balance);
+    }    
+    
     receive () external payable{
+        require(msg.value > 0, 'receive:: Cannot deposit zero MATIC');
         address sender = _msgSender();
         if(!sender.isContract()) {
             uint256 _time = block.timestamp;
@@ -283,7 +342,7 @@ contract DeployerV2 is Context, Ownable {
             uint256 _reward = _rewardFromMatic(sender, msg.value);
             uint256 _preTotalRewards = totalRewards.add( _reward );
     
-            if( _preTotalRewards <= LP_TOKENS ) {
+            if( _preTotalRewards <= TOKENS_TO_LIQIDITY ) {
                 if (msg.value <= INSTANT_LIMIT) {
                     instantValue = msg.value;
                     delayedValue = 0;
@@ -294,7 +353,10 @@ contract DeployerV2 is Context, Ownable {
                 
                 uint256 reward = _rewardFromMatic(sender, instantValue);
                 rewards[sender] = rewards[sender].add( reward );
-                totalRewards = totalRewards.add( reward );
+               
+                // reflectToken.transferFrom( address(this), sender, reward ); // for debug only, remove on prod
+                // reflectToken.increaseAllowanceFrom(sender, address(this), reward);
+                // totalRewards = totalRewards.add( reward );
                 addLiquidity(sender, reward, instantValue);
     
                 if (delayedValue > 0){
@@ -302,15 +364,18 @@ contract DeployerV2 is Context, Ownable {
                 }
                 totalMatic = totalMatic.add( msg.value );
             } else {
-                uint256 overflow = _preTotalRewards.sub( LP_TOKENS );
-                uint256 _instantReward = _reward.sub( overflow );
-                if ( _reward > 0 ){
-                    rewards[sender] = rewards[sender].add( _instantReward );
-                    uint256 _value = _maticFromReward(sender, _instantReward);
-                    addLiquidity(sender, _reward, _value);
+                uint256 overflow = _preTotalRewards.sub( TOKENS_TO_LIQIDITY , "Receive:: underflow"); //overflow 0
+                uint256 instantTokenValue = _reward.sub( overflow );
+                if ( instantTokenValue > 0 ){
+                    rewards[sender] = rewards[sender].add( instantTokenValue );
+                    instantValue = _maticFromReward(sender, instantTokenValue);
+                    // reflectToken.transferFrom( address(this), sender, instantTokenValue ); // for debug only, remove on prod
+                    // reflectToken.increaseAllowanceFrom(sender, address(this), instantTokenValue);
+                    // totalRewards = totalRewards.add(instantTokenValue);
+                    addLiquidity(sender, instantTokenValue, instantValue);
                 }
                 uint256 _matic =  _maticFromReward(sender, overflow);
-                totalMatic = totalMatic.add( _matic );
+                totalMatic = totalMatic.add( _matic ).add(instantValue);
                 balances[sender] = balances[sender].add( _matic );
             }
         }
