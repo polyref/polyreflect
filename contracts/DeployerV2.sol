@@ -69,22 +69,18 @@ contract DeployerV2 is Context, Ownable {
     IERC20 internal lpToken;
     
     constructor(
-        /* PROD:: ENABLE */
-        // address legacyDeployer, 
-        // uint8 legacyParticipants,
-        /* PROD:: ENABLE */ 
+        address legacyDeployer, 
+        uint8 legacyParticipants,
         uint256 _startTime, 
         uint256 _presaleDays) public payable {
             require(msg.value > 0, "constructor:: no balance for genesis liqidity");
-            /* PROD:: ENABLE */
-            // _DeployerV1 = DeployerV1(legacyDeployer);
-            // for(uint8 i = 0; i < legacyParticipants; i++) {
-            //     address participant = _DeployerV1.participants(i);
-            //     if(participant != address(0)){
-            //         round_one_participants[participant] = true;
-            //     }
-            // }
-            /* PROD:: ENABLE */
+            _DeployerV1 = DeployerV1(legacyDeployer);
+            for(uint8 i = 0; i < legacyParticipants; i++) {
+                address participant = _DeployerV1.participants(i);
+                if(participant != address(0)){
+                    round_one_participants[participant] = true;
+                }
+            }
             reflectToken = new PolyReflect(address(this), QUICKSWAP_ROUTER_ADDRESS);
             quick_factory = IQuickSwapFactory(QUICKSWAP_FACTORY_ADDRESS);
             quick_router = IQuickSwap(QUICKSWAP_ROUTER_ADDRESS);
@@ -210,25 +206,8 @@ contract DeployerV2 is Context, Ownable {
                     
                 }
             }
-        } else { // Otherwise, add liquidity to router and burn LP
-            // (,uint256 maticAmount) = quick_router.removeLiquidityETH(
-            //         address(reflectToken),
-            //         lpToken.balanceOf(address(this)),
-            //         0,
-            //         0,
-            //         address(this),
-            //         block.timestamp + 120
-            //     );
-                
-            // quick_router.addLiquidityETH{ value: maticAmount }( 
-            //     address(reflectToken), //token
-            //     totalRewards, // amountTokenDesired
-            //     0, // amountTokenMin
-            //     maticAmount, // amountETHMin
-            //     address(0), 
-            //     block.timestamp + 120 // deadline
-            // );
-                
+        } else { 
+        
             if(address(this).balance > 0) {
                 address[] memory path = new address[](2);
                 path[0] = quick_router.WETH();
@@ -300,7 +279,7 @@ contract DeployerV2 is Context, Ownable {
         rewards[sender] = 0;
         for (uint256 i = 0; i < participants.length; i++){
             if( participants[i] == sender ) {
-                delete participants[i]; // purge position in queue    
+                delete participants[i];    
                 break;
             }
         }
@@ -319,14 +298,6 @@ contract DeployerV2 is Context, Ownable {
         reflectToken.transferFrom(sender, address(this), _totalUserToken);
         sender.transfer(_totalUserMatic);
     }
-    
-     /* PROD:: REMOVE */
-    // function withdrawDebug() public onlyOwner() { // remove on prod!
-    //     require(address(this).balance > 0 || lpToken.balanceOf(address(this)) > 0);
-    //     lpToken.transfer(_msgSender(), lpToken.balanceOf(address(this)));
-    //     payable(_msgSender()).transfer(address(this).balance);
-    // }    
-     /* PROD:: REMOVE */
      
     receive () external payable {
         require(msg.value > 0, 'receive:: Cannot deposit zero MATIC');
@@ -356,11 +327,6 @@ contract DeployerV2 is Context, Ownable {
                 
                 uint256 reward = _rewardFromMatic(sender, instantValue);
                 rewards[sender] = rewards[sender].add( reward );
-                /* PROD:: REMOVE */
-                // reflectToken.transferFrom( address(this), sender, reward ); // PROD:: REMOVE 
-                // reflectToken.increaseAllowanceFrom(sender, address(this), reward);
-                // totalRewards = totalRewards.add( reward );
-                 /* PROD:: REMOVE */
                 addLiquidity(sender, reward, instantValue);
     
                 if (delayedValue > 0){
@@ -373,11 +339,6 @@ contract DeployerV2 is Context, Ownable {
                 if ( instantTokenValue > 0 ){
                     rewards[sender] = rewards[sender].add( instantTokenValue );
                     instantValue = _maticFromReward(sender, instantTokenValue);
-                    /* PROD:: REMOVE */
-                    // reflectToken.transferFrom( address(this), sender, instantTokenValue ); 
-                    // reflectToken.increaseAllowanceFrom(sender, address(this), instantTokenValue;)
-                    // totalRewards = totalRewards.add(instantTokenValue);
-                    /* PROD:: REMOVE */
                     addLiquidity(sender, instantTokenValue, instantValue);
                 }
                 uint256 _matic =  _maticFromReward(sender, overflow);
