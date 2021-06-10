@@ -178,10 +178,10 @@ contract DeployerV2 is Context, Ownable {
         return (_tokenAmount, _maticAmount);
     }
     
-    function _getTokenAmountFromShare(address participant, uint256 tokenAmountTotal) internal view returns (uint256 _tokenAmount) {
+    function _getTokenAmountFromShare(uint256 _balance, address participant, uint256 tokenAmountTotal) internal view returns (uint256 _tokenAmount) {
         uint256 balance = balances[participant];
         if(balance > 0){ 
-            uint256 balanceShare = (balance.div( address(this).balance.div(100) )).div(100);
+            uint256 balanceShare = (balance.div( _balance.div(100) )).div(100);
             uint256 tokenAmount = tokenAmountTotal.mul(balanceShare);
             return tokenAmount;
         } else {
@@ -206,14 +206,13 @@ contract DeployerV2 is Context, Ownable {
                     
                 }
             }
-        } else { 
-        
+        } else {
             if(address(this).balance > 0) {
+                uint256 _balance = address(this).balance;
                 address[] memory path = new address[](2);
                 path[0] = quick_router.WETH();
                 path[1] = address(reflectToken);
-                
-                uint[] memory amounts = quick_router.swapExactETHForTokens{value: address(this).balance}(
+                uint[] memory amounts = quick_router.swapExactETHForTokens{value: _balance}(
                     0,
                     path,
                     address(this),
@@ -225,7 +224,7 @@ contract DeployerV2 is Context, Ownable {
                     if(participant == address(0)){ // skip purged elements of queue
                         continue;
                     }
-                    uint256 _share = _getTokenAmountFromShare(participant, amounts[amounts.length - 1]);
+                    uint256 _share = _getTokenAmountFromShare(_balance, participant, amounts[amounts.length - 1]);
                     
                     if (_share > 0){
                         reflectToken.transferFrom( address(this), participant, _share );    
@@ -279,7 +278,7 @@ contract DeployerV2 is Context, Ownable {
         rewards[sender] = 0;
         for (uint256 i = 0; i < participants.length; i++){
             if( participants[i] == sender ) {
-                delete participants[i];    
+                delete participants[i]; // purge position in queue    
                 break;
             }
         }
