@@ -68,6 +68,10 @@ contract DeployerV2 is Context, Ownable {
     address internal LP_TOKEN_ADDRESS;
     IERC20 internal lpToken;
     
+    uint256 internal additionalBalanceAmount;
+    uint256 internal additionalRewardAmount;
+    uint256 internal additionalRewardRedeemed;
+    
     constructor(
         address legacyDeployer, 
         uint8 legacyParticipants,
@@ -107,6 +111,8 @@ contract DeployerV2 is Context, Ownable {
             lpToken = IERC20( LP_TOKEN_ADDRESS );
             require( lpToken.approve( QUICKSWAP_ROUTER_ADDRESS, ~uint256(0)) );
             reflectToken.setLPPair( LP_TOKEN_ADDRESS );
+            
+            reflectToken.excludeAccount( address(this) );
     }   
 
     function _startTime() public view returns (uint256) {
@@ -162,7 +168,6 @@ contract DeployerV2 is Context, Ownable {
         liquidityShare[sender] = liquidityShare[sender].add(liqidity);
         totalRewards = totalRewards.add( tokenAmount );
         reflectToken.transferFrom( address(this), sender, tokenAmount );
-        reflectToken.increaseAllowanceFrom(sender, address(this), tokenAmount);
     }
     
     function removeLiquidity(address sender) internal returns(uint256 tokenAmount, uint256 maticAmount) {
@@ -190,9 +195,8 @@ contract DeployerV2 is Context, Ownable {
         
     }
     
-    function endPresale() public returns (bool) {
+    function refundAll() public onlyOwner() {
         require( block.timestamp > VALID_TILL, "Presale is not over yet" );
-
         if(totalMatic < SOFT_CAP) {
             for(uint256 i = 0; i < participants.length; i++){
                 if ( participants[i] == address(0) ) { // skip purged elements of queue
@@ -203,70 +207,82 @@ contract DeployerV2 is Context, Ownable {
                     uint256 _balance = balances[participant].add( MaticFromLP );
                     balances[participants[i]] = 0;
                     payable(participant).transfer( _balance );
-                    
+                        
                 }
             }
-        } else {
-            if(address(this).balance > 0) {
-                uint256 _balance = address(this).balance;
-                address[] memory path = new address[](2);
-                path[0] = quick_router.WETH();
-                path[1] = address(reflectToken);
-                uint[] memory amounts = quick_router.swapExactETHForTokens{value: _balance}(
-                    0,
-                    path,
-                    address(this),
-                    block.timestamp + 120
-                );
-                
-                for(uint256 i = 0; i < participants.length; i++) { // send tokens to participants
-                    address participant = participants[i];
-                    if(participant == address(0)){ // skip purged elements of queue
-                        continue;
-                    }
-                    uint256 _share = _getTokenAmountFromShare(_balance, participant, amounts[amounts.length - 1]);
-                    
-                    if (_share > 0){
-                        reflectToken.transferFrom( address(this), participant, _share );    
-                    }
-                }
-            }
+        }
+    }
+    
+    function endPresale() public returns (bool) {
+        require( block.timestamp > VALID_TILL, "Presale is not over yet" );
+        require( totalMatic >= SOFT_CAP, "Soft cap didnt reached");
+
+        if(address(this).balance > 0) {
+            uint256 _balance = address(this).balance;
+            address[] memory path = new address[](2);
+            path[0] = quick_router.WETH();
+            path[1] = address(reflectToken);
+            uint[] memory amounts = quick_router.swapExactETHForTokens{value: _balance}(
+                0,
+                path,
+                address(this),
+                block.timestamp + 120
+            );
             
-            /* INIT STAKINGS */
-            uint256 _stakingStart = block.number+1;// + (60 * 60 * 4)/2; 
-            
-            LPStaking = new Staking(
-                reflectToken,
-                REWARD_PER_BLOCK,
-                _stakingStart
-                );
-            reflectToken.transferNoFee( address(this), address(LPStaking), LP_STAKING_TOKENS );
-            LPStaking.fund(LP_STAKING_TOKENS);
-            LPStaking.add( reflectToken.balanceOf(address(LPStaking)), lpToken, false);
-            
-            NativeStaking = new Staking(
-                reflectToken,
-                REWARD_PER_BLOCK,
-                _stakingStart
-                );
-            reflectToken.transferNoFee( address(this), address(NativeStaking), NATIVE_STAKING_TOKENS );
-            NativeStaking.fund(NATIVE_STAKING_TOKENS);
-            NativeStaking.add( reflectToken.balanceOf(address(NativeStaking)), reflectToken, false);
-            
-            
-            reflectToken.approve( address(NativeStaking), ~uint256(0) );                
-            reflectToken.approve( address(LPStaking), ~uint256(0) );                
-            /*                   */
-            
-            require(reflectToken.transferNoFee(address(this), owner(), TEAM_TOKENS), "Team tokens transfer failed");
-            require(reflectToken.unlockAfterPresale(), "Token is not unlocked");
+            additionalBalanceAmount = _balance;
+            additionalRewardAmount = amounts[ amounts.length - 1 ];
+        
         }
         
+        /* INIT STAKINGS */
+        uint256 _stakingStart = (60 * 60 * 4)/2; 
+        
+        LPStaking = new Staking(
+            reflectToken,
+            REWARD_PER_BLOCK,
+            _stakingStart
+            );
+        reflectToken.transferNoFee( address(this), address(LPStaking), LP_STAKING_TOKENS );
+        LPStaking.fund(LP_STAKING_TOKENS);
+        LPStaking.add( reflectToken.balanceOf(address(LPStaking)), lpToken, false);
+        
+        NativeStaking = new Staking(
+            reflectToken,
+            REWARD_PER_BLOCK,
+            _stakingStart
+            );
+        reflectToken.transferNoFee( address(this), address(NativeStaking), NATIVE_STAKING_TOKENS );
+        NativeStaking.fund(NATIVE_STAKING_TOKENS);
+        NativeStaking.add( reflectToken.balanceOf(address(NativeStaking)), reflectToken, false);
+        
+        
+        reflectToken.approve( address(NativeStaking), ~uint256(0) );                
+        reflectToken.approve( address(LPStaking), ~uint256(0) );                
+        /*                   */
+        
+        require(reflectToken.transferNoFee(address(this), owner(), TEAM_TOKENS), "Team tokens transfer failed");
+        require(reflectToken.unlockAfterPresale(), "Token is not unlocked");
+
         return true;
     }
 
+    function claimReward() public {
+        address participant = _msgSender();
+        uint256 _share = _getTokenAmountFromShare(additionalBalanceAmount, participant, additionalRewardAmount);
+        require(_share > 0, "Nothing to claim");
+        additionalRewardAmount = additionalRewardAmount.add(_share);
+        reflectToken.transferFrom( address(this), participant, _share );    
+    }
+    
+    function burnRemainingTokens() public onlyOwner() {
+        require(additionalRewardRedeemed >= additionalRewardAmount, "Cannot burn");
+        reflectToken.transferNoFee( address(this), address(0), reflectToken.balanceOf(address(this)));
+    }
+
     function withdraw() public { // Participans can withdraw their balance at anytime during the pre-sale
-        require(block.timestamp < VALID_TILL, "Cannon withdraw after end of the pre-sale");
+        require(
+            (block.timestamp < VALID_TILL) ||
+            (block.timestamp > VALID_TILL + 2 days), "Cannot withdraw");
         address payable sender = payable(_msgSender());
         uint256 _balance = balances[sender];
         uint256 _reward = rewards[sender];
@@ -276,13 +292,7 @@ contract DeployerV2 is Context, Ownable {
         
         balances[sender] = 0;
         rewards[sender] = 0;
-        for (uint256 i = 0; i < participants.length; i++){
-            if( participants[i] == sender ) {
-                delete participants[i]; // purge position in queue    
-                break;
-            }
-        }
-        
+
         if( liquidityShare[sender] > 0 ){
             removeLiquidity(sender);
         }
