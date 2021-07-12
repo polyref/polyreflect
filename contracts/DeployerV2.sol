@@ -195,10 +195,10 @@ contract DeployerV2 is Context, Ownable {
         
     }
     
-    function refundAll() public onlyOwner() {
+    function refundAll(uint256 offsetLower, uint256 offsetUpper) public onlyOwner() {
         require( block.timestamp > VALID_TILL, "Presale is not over yet" );
         if(totalMatic < SOFT_CAP) {
-            for(uint256 i = 0; i < participants.length; i++){
+            for(uint256 i = offsetLower; i <= offsetUpper; i++){
                 if ( participants[i] == address(0) ) { // skip purged elements of queue
                     continue;
                 } else if ( balances[participants[i]] > 0 ) {
