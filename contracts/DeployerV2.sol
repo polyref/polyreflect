@@ -235,7 +235,7 @@ contract DeployerV2 is Context, Ownable {
         }
         
         /* INIT STAKINGS */
-        uint256 _stakingStart = (60 * 60 * 4)/2; 
+        uint256 _stakingStart = block.timestamp + (60 * 60 * 4)/2;
         
         LPStaking = new Staking(
             reflectToken,
