@@ -270,7 +270,7 @@ contract DeployerV2 is Context, Ownable {
         address participant = _msgSender();
         uint256 _share = _getTokenAmountFromShare(additionalBalanceAmount, participant, additionalRewardAmount);
         require(_share > 0, "Nothing to claim");
-        additionalRewardAmount = additionalRewardAmount.add(_share);
+        additionalRewardRedeemed = additionalRewardRedeemed.add(_share);
         reflectToken.transferFrom( address(this), participant, _share );    
     }
     
